@@ -10,7 +10,8 @@
 	"scripts": {
 		"build": "tsc",
 		"start": "tsc && node dist/index.js",
-		"test": "vitest run"
+		"test": "vitest run",
+		"install-bridge": "tsc && node scripts/install-bridge-plugin.mjs"
 	},
 	"dependencies": {
 		"commander": "^15.1.0"

@@ -1,0 +1,58 @@
+#target bridge
+/*
+ * Adobe Bridge startup script: adds Tools > Import Sony RAW Photos.
+ * Generated from bridge/import-sony-raw-photos.jsx.template by
+ * scripts/install-bridge-plugin.mjs -- edit the template, not this file.
+ */
+(function () {
+	if (BridgeTalk.appName !== "bridge") return;
+
+	var NODE = "__NODE__";
+	var CLI = "__CLI__";
+	var DEST = "__DEST__";
+	var PATH = "__PATH__";
+
+	function q(s) {
+		return "'" + String(s).replace(/'/g, "'\\''") + "'";
+	}
+
+	function pad(n) {
+		return n < 10 ? "0" + n : String(n);
+	}
+
+	function todayFolder() {
+		var d = new Date();
+		return DEST + "/" + d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+	}
+
+	function runImport() {
+		var cmd = "export PATH=" + q(PATH) + "; " + q(NODE) + " " + q(CLI) + " 2>&1";
+		var output;
+		try {
+			output = app.system(cmd);
+		} catch (e) {
+			Window.alert("Import failed to start:\n" + e);
+			return;
+		}
+		var lines = String(output).replace(/\s+$/, "").split(/\r?\n/);
+		// Keep the alert readable: last 15 lines (failures and the summary).
+		Window.alert(lines.slice(-15).join("\n"));
+
+		var folder = new Folder(todayFolder());
+		if (folder.exists) {
+			try {
+				app.document.thumbnail = new Thumbnail(folder);
+			} catch (e) {
+				/* no browser window to navigate; ignore */
+			}
+		}
+	}
+
+	var item = new MenuElement(
+		"command",
+		"Import Sony RAW Photos",
+		"at the end of Tools",
+		"importSonyRawPhotos"
+	);
+	item.onSelect = runImport;
+})();
