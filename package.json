@@ -1,0 +1,23 @@
+{
+	"name": "import-sony-raw-photos",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "CLI to import RAW photos from a Sony camera SD card.",
+	"bin": {
+		"import-sony-raw-photos": "./dist/index.js"
+	},
+	"scripts": {
+		"build": "tsc",
+		"start": "tsc && node dist/index.js",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"commander": "^15.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "^26.6.6",
+		"typescript": "^7.0.2",
+		"vitest": "^5.1.0"
+	}
+}
