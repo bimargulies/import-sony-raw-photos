@@ -12,7 +12,7 @@ program
 		"Convert ARW files delivered by Imaging Edge into DNGs under <dest>/YYYY-MM-DD/YYYY-MM-DD-nn.dng, then delete the originals.",
 	)
 	.version("0.1.0")
-	.option("-s, --source <dir>", "folder Imaging Edge delivers into", "/Volumes/Photos/Bridge")
+	.option("-s, --source <dir>", "folder Imaging Edge delivers into", "/Volumes/Photos/Bridge/Capture")
 	.option("-d, --dest <dir>", "import destination", path.join(os.homedir(), "Bridge", "New"))
 	.option("-n, --dry-run", "show what would happen without converting or deleting")
 	.option("--keep-originals", "don't delete the ARW files after a successful import")
