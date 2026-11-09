@@ -1,6 +1,7 @@
 {
 	"name": "import-sony-raw-photos",
 	"version": "0.1.0",
+	"license": "MIT",
 	"private": true,
 	"type": "module",
 	"description": "CLI to import RAW photos from a Sony camera SD card.",
