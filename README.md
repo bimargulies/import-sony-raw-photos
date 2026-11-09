@@ -27,4 +27,7 @@ Bridge menu command while a watcher is running). `--watch` can't be combined wit
 
 Writes a startup script to `~/Library/Application Support/Adobe/Bridge <year>/Startup Scripts/`.
 Restart Bridge; **Tools > Import Sony RAW Photos** runs the importer and opens today's folder.
+**Tools > Start Watching Sony RAW Imports** launches `--watch` in the background (log:
+`$TMPDIR/import-sony-raw-photos-watch.log`); **Stop Watching Sony RAW Imports** sends it SIGINT so it
+finishes the current import and exits.
 Re-run `pnpm install-bridge` if the project or node moves.

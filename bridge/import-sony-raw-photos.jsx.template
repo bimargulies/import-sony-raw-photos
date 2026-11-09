@@ -1,6 +1,6 @@
 #target bridge
 /*
- * Adobe Bridge startup script: adds Tools > Import Sony RAW Photos.
+ * Adobe Bridge startup script: adds Tools > Import Sony RAW Photos and Start/Stop Watching.
  * Generated from bridge/import-sony-raw-photos.jsx.template by
  * scripts/install-bridge-plugin.mjs -- edit the template, not this file.
  */
@@ -11,6 +11,7 @@
 	var CLI = "__CLI__";
 	var DEST = "__DEST__";
 	var PATH = "__PATH__";
+	var LOCK = "__LOCK__";
 
 	function q(s) {
 		return "'" + String(s).replace(/'/g, "'\\''") + "'";
@@ -44,14 +45,78 @@
 		// Keep the alert readable: last 15 lines (failures and the summary).
 		Window.alert(lines.slice(-15).join("\n"));
 
+		openDest();
+	}
+
+	// Show today's destination folder in Bridge (or the destination root if today's doesn't exist yet).
+	function openDest() {
 		var folder = new Folder(todayFolder());
-		if (folder.exists) {
-			try {
-				app.document.thumbnail = new Thumbnail(folder);
-			} catch (e) {
-				/* no browser window to navigate; ignore */
-			}
+		if (!folder.exists) folder = new Folder(DEST);
+		if (!folder.exists) return;
+		try {
+			app.document.thumbnail = new Thumbnail(folder);
+		} catch (e) {
+			/* no browser window to navigate; ignore */
 		}
+	}
+
+	// Run a shell command and return its stdout (app.system only gives the exit code).
+	function sh(cmd) {
+		var out = new File(Folder.temp + "/import-sony-raw-photos.sh.out");
+		try {
+			app.system("export PATH=" + q(PATH) + "; " + cmd + " > " + q(out.fsName) + " 2>&1");
+			var text = "";
+			if (out.open("r")) {
+				text = out.read();
+				out.close();
+			}
+			return String(text).replace(/\s+$/, "");
+		} catch (e) {
+			return "";
+		}
+	}
+
+	// PID of a running watcher (from the import lock), or 0.
+	function watcherPid() {
+		var pid = parseInt(sh("cat " + q(LOCK)), 10);
+		if (!pid) return 0;
+		var cmd = sh("ps -p " + pid + " -o command=");
+		return cmd.indexOf(CLI) !== -1 && cmd.indexOf("--watch") !== -1 ? pid : 0;
+	}
+
+	var watchLog = new File(Folder.temp + "/import-sony-raw-photos-watch.log");
+
+	function startWatch() {
+		if (watcherPid()) {
+			Window.alert("The watcher is already running.");
+			return;
+		}
+		app.system(
+			"export PATH=" + q(PATH) + "; nohup " + q(NODE) + " " + q(CLI) + " --watch > " + q(watchLog.fsName) + " 2>&1 < /dev/null &"
+		);
+		$.sleep(1500);
+		if (watcherPid()) {
+			openDest();
+			Window.alert("Watching for new photos.\nLog: " + watchLog.fsName);
+		} else {
+			var text = "";
+			if (watchLog.open("r")) {
+				text = watchLog.read();
+				watchLog.close();
+			}
+			Window.alert("The watcher did not start:\n" + String(text).replace(/\s+$/, "").split(/\r?\n/).slice(-10).join("\n"));
+		}
+	}
+
+	function stopWatch() {
+		var pid = watcherPid();
+		if (!pid) {
+			Window.alert("The watcher is not running.");
+			return;
+		}
+		// SIGINT: the watcher finishes the import in progress, then exits.
+		sh("kill -INT " + pid);
+		Window.alert("Stopping the watcher (it finishes the import in progress first).");
 	}
 
 	var item = new MenuElement(
@@ -61,4 +126,19 @@
 		"importSonyRawPhotos"
 	);
 	item.onSelect = runImport;
+
+	var startItem = new MenuElement(
+		"command",
+		"Start Watching Sony RAW Imports",
+		"at the end of Tools",
+		"startWatchSonyRawPhotos"
+	);
+	startItem.onSelect = startWatch;
+	var stopItem = new MenuElement(
+		"command",
+		"Stop Watching Sony RAW Imports",
+		"at the end of Tools",
+		"stopWatchSonyRawPhotos"
+	);
+	stopItem.onSelect = stopWatch;
 })();

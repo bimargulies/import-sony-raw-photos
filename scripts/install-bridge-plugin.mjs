@@ -35,7 +35,8 @@ const script = template
 	.replace("__NODE__", process.execPath)
 	.replace("__CLI__", cli)
 	.replace("__DEST__", path.join(os.homedir(), "Bridge", "New"))
-	.replace("__PATH__", toolPath);
+	.replace("__PATH__", toolPath)
+	.replace("__LOCK__", path.join(os.homedir(), ".config", "import-sony-raw-photos", "lock"));
 
 const dir = path.join(support, bridge, "Startup Scripts");
 await fs.mkdir(dir, { recursive: true });
