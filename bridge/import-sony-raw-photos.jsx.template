@@ -26,10 +26,16 @@
 	}
 
 	function runImport() {
-		var cmd = "export PATH=" + q(PATH) + "; " + q(NODE) + " " + q(CLI) + " 2>&1";
-		var output;
+		var log = new File(Folder.temp + "/import-sony-raw-photos.log");
+		var cmd = "export PATH=" + q(PATH) + "; " + q(NODE) + " " + q(CLI) + " > " + q(log.fsName) + " 2>&1";
+		var output = "";
 		try {
-			output = app.system(cmd);
+			var code = app.system(cmd);
+			if (log.open("r")) {
+				output = log.read();
+				log.close();
+			}
+			if (!output) output = "(no output; exit code " + code + ")";
 		} catch (e) {
 			Window.alert("Import failed to start:\n" + e);
 			return;

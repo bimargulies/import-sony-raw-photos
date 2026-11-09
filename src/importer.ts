@@ -2,7 +2,8 @@ import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { exifDateToIso, localIsoDate, NameAllocator } from "./naming.js";
+import { Counter, DEFAULT_COUNTER_FILE } from "./counter.js";
+import { exifDateToIso, formatName, localIsoDate } from "./naming.js";
 
 const run = promisify(execFile);
 
@@ -13,6 +14,8 @@ export interface ImportOptions {
 	keepOriginals: boolean;
 	/** Skip files modified more recently than this (still being delivered). */
 	minAgeMs: number;
+	/** File holding the last sequence number used. */
+	counterFile?: string;
 	now?: Date;
 	log?: (msg: string) => void;
 }
@@ -86,20 +89,16 @@ export async function importPhotos(opts: ImportOptions): Promise<ImportResult> {
 	}
 
 	const folder = path.join(opts.dest, localIsoDate(now));
-	let existing: string[] = [];
-	try {
-		existing = await fs.readdir(folder);
-	} catch {
-		/* folder doesn't exist yet */
-	}
-	const names = new NameAllocator(existing);
+	const counter = new Counter(opts.counterFile ?? DEFAULT_COUNTER_FILE);
+	let seq = await counter.last();
 	const partialDir = path.join(folder, `.partial-${process.pid}`);
 
 	for (const c of candidates) {
-		const name = names.allocate(exifDateToIso(c.captured)!);
+		const name = formatName(exifDateToIso(c.captured)!, seq + 1);
 		const target = path.join(folder, name);
 		if (opts.dryRun) {
 			log(`would import ${c.file} -> ${target}`);
+			seq++;
 			result.imported++;
 			continue;
 		}
@@ -110,6 +109,8 @@ export async function importPhotos(opts: ImportOptions): Promise<ImportResult> {
 			const st = await fs.stat(tmp);
 			if (st.size === 0) throw new Error("converter produced an empty file");
 			await fs.rename(tmp, target);
+			seq++;
+			await counter.commit(seq);
 			if (!opts.keepOriginals) await fs.unlink(c.file);
 			log(`${c.file} -> ${target}`);
 			result.imported++;

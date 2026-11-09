@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exifDateToIso, localIsoDate, NameAllocator } from "./naming.js";
+import { exifDateToIso, localIsoDate, formatName } from "./naming.js";
 
 describe("exifDateToIso", () => {
 	it("parses EXIF timestamps", () => {
@@ -16,19 +16,11 @@ describe("localIsoDate", () => {
 	});
 });
 
-describe("NameAllocator", () => {
-	it("starts at 01 and counts per date", () => {
-		const a = new NameAllocator();
-		expect(a.allocate("2026-11-08")).toBe("2026-11-08-01.dng");
-		expect(a.allocate("2026-11-08")).toBe("2026-11-08-02.dng");
-		expect(a.allocate("2026-11-07")).toBe("2026-11-07-01.dng");
+describe("formatName", () => {
+	it("pads to four digits", () => {
+		expect(formatName("2026-11-08", 7)).toBe("2026-11-08-0007.dng");
 	});
-	it("continues after existing files", () => {
-		const a = new NameAllocator(["2026-11-08-03.dng", "2026-11-08-01.dng", "x.txt"]);
-		expect(a.allocate("2026-11-08")).toBe("2026-11-08-04.dng");
-	});
-	it("widens past 99", () => {
-		const a = new NameAllocator(["2026-11-08-99.dng"]);
-		expect(a.allocate("2026-11-08")).toBe("2026-11-08-100.dng");
+	it("widens past 9999", () => {
+		expect(formatName("2026-11-08", 10000)).toBe("2026-11-08-10000.dng");
 	});
 });
