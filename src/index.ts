@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
@@ -6,6 +7,9 @@ import { Counter, DEFAULT_COUNTER_FILE } from "./counter.js";
 import { Importer } from "./importer.js";
 import { acquireLock } from "./lock.js";
 import { watchLoop } from "./watch.js";
+
+// package.json is the single source of truth for the version (dist/ and src/ both sit beside it).
+const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
 
 const stamp = () => new Date().toTimeString().slice(0, 8);
 
@@ -16,7 +20,7 @@ program
 	.description(
 		"Convert ARW files delivered by Imaging Edge into DNGs under <dest>/YYYY-MM-DD/YYYY-MM-DD-NNNN.dng (NNNN is a persistent counter), then delete the originals.",
 	)
-	.version("0.1.0")
+	.version(version)
 	.option("-s, --source <dir>", "folder Imaging Edge delivers into", "/Volumes/Photos/Bridge/Capture")
 	.option("-d, --dest <dir>", "import destination", path.join(os.homedir(), "Bridge", "New"))
 	.option("-n, --dry-run", "show what would happen without converting or deleting")
@@ -58,7 +62,7 @@ program
 				process.on("SIGINT", stop);
 				process.on("SIGTERM", stop);
 				log(
-					`watching ${opts.source} every ${opts.interval}s; files import after ${opts.settle}s unchanged; next number ${(await new Counter(opts.counterFile).last()) + 1}`,
+					`v${version} watching ${opts.source} every ${opts.interval}s; files import after ${opts.settle}s unchanged; next number ${(await new Counter(opts.counterFile).last()) + 1}`,
 				);
 				await watchLoop(importer, { intervalMs: Number(opts.interval) * 1000, log, signal: ac.signal });
 				return;

@@ -178,15 +178,16 @@ export class Importer {
 
 		for (const c of candidates) {
 			if (c.grayCard) {
-				// A gray card closes the current stack; the photos after it form the next one.
-				this.stackPending = true;
+				// Markers come in open/close pairs: the first opens a stack, the next closes it.
+				const closing = this.stackPending || this.stackDir !== undefined;
+				this.stackPending = !closing;
 				this.stackDir = undefined;
 				try {
 					if (opts.dryRun) {
-						log(`would drop gray card ${c.file}`);
+						log(`would drop marker frame ${c.file} (${closing ? "closes" : "opens"} a stack)`);
 					} else {
 						if (!opts.keepOriginals) await fs.unlink(c.file);
-						log(`gray card, starting a new stack: ${c.file}`);
+						log(`marker frame, ${closing ? "closing the stack" : "starting a new stack"}: ${c.file}`);
 					}
 					result.imported++;
 				} catch (err) {

@@ -86,9 +86,14 @@
 
 	var watchLog = new File(Folder.temp + "/import-sony-raw-photos-watch.log");
 
+	// Version of the installed importer, as reported by the CLI itself.
+	function version() {
+		return sh(q(NODE) + " " + q(CLI) + " --version") || "unknown";
+	}
+
 	function startWatch() {
 		if (watcherPid()) {
-			Window.alert("The watcher is already running.");
+			Window.alert("The watcher is already running (importer v" + version() + ").");
 			return;
 		}
 		app.system(
@@ -97,7 +102,7 @@
 		$.sleep(1500);
 		if (watcherPid()) {
 			openDest();
-			Window.alert("Watching for new photos.\nLog: " + watchLog.fsName);
+			Window.alert("Import Sony RAW Photos v" + version() + "\nWatching for new photos.\nLog: " + watchLog.fsName);
 		} else {
 			var text = "";
 			if (watchLog.open("r")) {
