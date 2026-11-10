@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { Counter, DEFAULT_COUNTER_FILE } from "./counter.js";
-import { detectGrayCard } from "./graycard.js";
+import { detectBlackFrame } from "./blackframe.js";
 import { exifDateToIso, formatName, formatStackName, localIsoDate } from "./naming.js";
 
 const run = promisify(execFile);
@@ -39,7 +39,7 @@ interface Candidate {
 	captured: string; // "YYYY:MM:DD HH:MM:SS.sss" — sorts lexically
 	width?: number;
 	height?: number;
-	grayCard?: boolean;
+	blackFrame?: boolean;
 }
 
 async function findArws(dir: string, out: string[] = []): Promise<string[]> {
@@ -106,7 +106,7 @@ export class Importer {
 	private seen = new Map<string, Seen>();
 	private failed = new Map<string, { size: number; mtimeMs: number; at: number }>();
 	private readonly log: (msg: string) => void;
-	/** A gray card was seen and the next imported photo starts a new stack. */
+	/** A marker frame was seen and the next imported photo starts a new stack. */
 	private stackPending = false;
 	/** Folder of the stack currently being filled; persists across scans so watch mode can continue it. */
 	private stackDir: string | undefined;
@@ -149,9 +149,9 @@ export class Importer {
 				if (opts.verbose) log(`stable, importing: ${file}`);
 				const cand = await readCapture(file);
 				try {
-					cand.grayCard = await detectGrayCard(file);
+					cand.blackFrame = await detectBlackFrame(file);
 				} catch (err) {
-					log(`gray card check failed for ${file}, treating as a photo: ${(err as Error).message}`);
+					log(`black frame check failed for ${file}, treating as a photo: ${(err as Error).message}`);
 				}
 				candidates.push(cand);
 			} catch (err) {
@@ -177,7 +177,7 @@ export class Importer {
 		const partialDir = path.join(folder, `.partial-${process.pid}`);
 
 		for (const c of candidates) {
-			if (c.grayCard) {
+			if (c.blackFrame) {
 				// Markers come in open/close pairs: the first opens a stack, the next closes it.
 				const closing = this.stackPending || this.stackDir !== undefined;
 				this.stackPending = !closing;

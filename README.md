@@ -14,12 +14,12 @@ writes DNGs to `~/Bridge/New/<today>/` (override with `--dest`).
 
 ## Focus stacks
 
-Marker photos — a gray card (uniform, neutral mid-gray) or a black frame (lens cap on), judged from
-the center of the ARW's embedded preview — come in open/close pairs. The first marker opens a stack,
+Marker photos — black frames (lens cap on), judged from the center of the ARW's embedded preview —
+come in open/close pairs. The first marker opens a stack,
 the next closes it. Markers are deleted without a DNG; the photos between them, in capture order, go
 into `<dest>/<date>/stack-NNN/`, where `NNN` comes from a persistent counter (`stack-counter`, beside
 the DNG counter). Photos outside a pair go in the day folder as usual. In watch mode an open stack
-continues across scans, but not across restarts of the watcher. Thresholds are in `src/graycard.ts`.
+continues across scans, but not across restarts of the watcher. Thresholds are in `src/blackframe.ts`.
 
 ## Watch mode
 
