@@ -9,6 +9,15 @@ CLI to import RAW photos from a Sony camera SD card.
 Defaults: reads ARWs from `/Volumes/Photos/Bridge/Capture` (override with `--source`),
 writes DNGs to `~/Bridge/New/<today>/` (override with `--dest`).
 
+## Focus stacks
+
+A marker photo — a gray card (uniform, neutral mid-gray) or a black frame (lens cap on), judged
+from the center of the ARW's embedded preview — starts a stack. The marker photo is deleted without a DNG, and the photos
+after it, in capture order, go into `<dest>/<date>/stack-NNN/` until the next gray card. `NNN` comes
+from a persistent counter (`stack-counter`, beside the DNG counter). Photos before the first gray
+card go in the day folder as usual. In watch mode an open stack continues across scans, but not
+across restarts of the watcher. Thresholds are in `src/graycard.ts`.
+
 ## Watch mode
 
     pnpm start -- --watch

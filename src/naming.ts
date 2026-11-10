@@ -14,3 +14,8 @@ export function localIsoDate(d: Date): string {
 export function formatName(date: string, seq: number): string {
 	return `${date}-${String(seq).padStart(4, "0")}.dng`;
 }
+
+/** "stack-NNN" for a stack sequence number (widens past 999). */
+export function formatStackName(seq: number): string {
+	return `stack-${String(seq).padStart(3, "0")}`;
+}

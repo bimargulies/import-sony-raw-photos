@@ -24,3 +24,11 @@ describe("formatName", () => {
 		expect(formatName("2026-11-08", 10000)).toBe("2026-11-08-10000.dng");
 	});
 });
+
+import { formatStackName } from "./naming.js";
+describe("formatStackName", () => {
+	it("pads to three digits", () => {
+		expect(formatStackName(7)).toBe("stack-007");
+		expect(formatStackName(1234)).toBe("stack-1234");
+	});
+});

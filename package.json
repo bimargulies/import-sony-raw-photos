@@ -15,7 +15,8 @@
 		"install-bridge": "tsc && node scripts/install-bridge-plugin.mjs"
 	},
 	"dependencies": {
-		"commander": "^15.1.0"
+		"commander": "^15.1.0",
+		"sharp": "^0.35.5"
 	},
 	"devDependencies": {
 		"@types/node": "^26.6.6",

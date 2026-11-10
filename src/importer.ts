@@ -3,7 +3,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { Counter, DEFAULT_COUNTER_FILE } from "./counter.js";
-import { exifDateToIso, formatName, localIsoDate } from "./naming.js";
+import { detectGrayCard } from "./graycard.js";
+import { exifDateToIso, formatName, formatStackName, localIsoDate } from "./naming.js";
 
 const run = promisify(execFile);
 
@@ -22,6 +23,8 @@ export interface ImportOptions {
 	verbose?: boolean;
 	/** File holding the last sequence number used. */
 	counterFile?: string;
+	/** File holding the last stack number used (default: "stack-counter" beside the counter file). */
+	stackCounterFile?: string;
 	log?: (msg: string) => void;
 }
 
@@ -36,6 +39,7 @@ interface Candidate {
 	captured: string; // "YYYY:MM:DD HH:MM:SS.sss" — sorts lexically
 	width?: number;
 	height?: number;
+	grayCard?: boolean;
 }
 
 async function findArws(dir: string, out: string[] = []): Promise<string[]> {
@@ -102,6 +106,10 @@ export class Importer {
 	private seen = new Map<string, Seen>();
 	private failed = new Map<string, { size: number; mtimeMs: number; at: number }>();
 	private readonly log: (msg: string) => void;
+	/** A gray card was seen and the next imported photo starts a new stack. */
+	private stackPending = false;
+	/** Folder of the stack currently being filled; persists across scans so watch mode can continue it. */
+	private stackDir: string | undefined;
 
 	constructor(private readonly opts: ImportOptions) {
 		this.log = opts.log ?? console.log;
@@ -139,7 +147,13 @@ export class Importer {
 					continue;
 				}
 				if (opts.verbose) log(`stable, importing: ${file}`);
-				candidates.push(await readCapture(file));
+				const cand = await readCapture(file);
+				try {
+					cand.grayCard = await detectGrayCard(file);
+				} catch (err) {
+					log(`gray card check failed for ${file}, treating as a photo: ${(err as Error).message}`);
+				}
+				candidates.push(cand);
 			} catch (err) {
 				if ((err as NodeJS.ErrnoException).code === "ENOENT") continue; // vanished mid-scan
 				log(`FAILED ${file}: ${(err as Error).message}`);
@@ -156,11 +170,41 @@ export class Importer {
 		const folder = path.join(opts.dest, localIsoDate(now));
 		const counter = new Counter(opts.counterFile ?? DEFAULT_COUNTER_FILE);
 		let seq = await counter.last();
+		const stackCounter = new Counter(
+			opts.stackCounterFile ?? path.join(path.dirname(opts.counterFile ?? DEFAULT_COUNTER_FILE), "stack-counter"),
+		);
+		let stackSeq = await stackCounter.last();
 		const partialDir = path.join(folder, `.partial-${process.pid}`);
 
 		for (const c of candidates) {
+			if (c.grayCard) {
+				// A gray card closes the current stack; the photos after it form the next one.
+				this.stackPending = true;
+				this.stackDir = undefined;
+				try {
+					if (opts.dryRun) {
+						log(`would drop gray card ${c.file}`);
+					} else {
+						if (!opts.keepOriginals) await fs.unlink(c.file);
+						log(`gray card, starting a new stack: ${c.file}`);
+					}
+					result.imported++;
+				} catch (err) {
+					log(`FAILED ${c.file}: ${(err as Error).message}`);
+					await this.remember(c.file);
+					result.failed++;
+				}
+				continue;
+			}
+			let destDir = folder;
+			if (this.stackPending) {
+				stackSeq++;
+				this.stackPending = false;
+				this.stackDir = path.join(folder, formatStackName(stackSeq));
+			}
+			if (this.stackDir) destDir = this.stackDir;
 			const name = formatName(exifDateToIso(c.captured)!, seq + 1);
-			const target = path.join(folder, name);
+			const target = path.join(destDir, name);
 			if (opts.dryRun) {
 				log(`would import ${c.file} -> ${target}`);
 				seq++;
@@ -174,9 +218,11 @@ export class Importer {
 				const st = await fs.stat(tmp);
 				if (st.size === 0) throw new Error("converter produced an empty file");
 				await verifyDng(tmp, c);
+				await fs.mkdir(destDir, { recursive: true });
 				await fs.rename(tmp, target);
 				seq++;
 				await counter.commit(seq);
+				if (destDir !== folder) await stackCounter.commit(stackSeq);
 				if (!opts.keepOriginals) await fs.unlink(c.file);
 				log(`${c.file} -> ${target}`);
 				result.imported++;
