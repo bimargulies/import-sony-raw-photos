@@ -26,6 +26,8 @@ export interface ImportOptions {
 	/** File holding the last stack number used (default: "stack-counter" beside the counter file). */
 	stackCounterFile?: string;
 	log?: (msg: string) => void;
+	/** Called for conditions the user should see (e.g. an empty stack); watch mode shows a popup. */
+	warn?: (msg: string) => void;
 }
 
 export interface ImportResult {
@@ -110,6 +112,8 @@ export class Importer {
 	private stackPending = false;
 	/** Folder of the stack currently being filled; persists across scans so watch mode can continue it. */
 	private stackDir: string | undefined;
+	/** Photos imported into the current stack so far. */
+	private stackPhotos = 0;
 
 	constructor(private readonly opts: ImportOptions) {
 		this.log = opts.log ?? console.log;
@@ -180,8 +184,14 @@ export class Importer {
 			if (c.blackFrame) {
 				// Markers come in open/close pairs: the first opens a stack, the next closes it.
 				const closing = this.stackPending || this.stackDir !== undefined;
+				if (closing && this.stackPhotos === 0) {
+					const msg = `empty stack: a marker frame closed a stack with no photos in it (${c.file}). A photo may have been mistaken for a marker, or a marker was shot by accident.`;
+					log(`WARNING: ${msg}`);
+					opts.warn?.(msg);
+				}
 				this.stackPending = !closing;
 				this.stackDir = undefined;
+				this.stackPhotos = 0;
 				try {
 					if (opts.dryRun) {
 						log(`would drop marker frame ${c.file} (${closing ? "closes" : "opens"} a stack)`);
@@ -209,6 +219,7 @@ export class Importer {
 			if (opts.dryRun) {
 				log(`would import ${c.file} -> ${target}`);
 				seq++;
+				if (destDir !== folder) this.stackPhotos++;
 				result.imported++;
 				continue;
 			}
@@ -223,7 +234,10 @@ export class Importer {
 				await fs.rename(tmp, target);
 				seq++;
 				await counter.commit(seq);
-				if (destDir !== folder) await stackCounter.commit(stackSeq);
+				if (destDir !== folder) {
+					await stackCounter.commit(stackSeq);
+					this.stackPhotos++;
+				}
 				if (!opts.keepOriginals) await fs.unlink(c.file);
 				log(`${c.file} -> ${target}`);
 				result.imported++;

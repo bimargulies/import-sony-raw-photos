@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +13,12 @@ import { watchLoop } from "./watch.js";
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
 
 const stamp = () => new Date().toTimeString().slice(0, 8);
+
+/** Non-blocking macOS alert so a background watcher can get the user's attention. */
+function popup(msg: string): void {
+	const text = `${msg}`.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+	execFile("osascript", ["-e", `display alert "Import Sony RAW Photos" message "${text}" as warning`], () => {});
+}
 
 const program = new Command();
 
@@ -50,6 +57,7 @@ program
 				settleMs: watching ? Number(opts.settle) * 1000 : 0,
 				verbose: watching,
 				log,
+				warn: watching ? popup : undefined,
 			});
 
 			if (watching) {
