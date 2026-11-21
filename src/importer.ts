@@ -3,9 +3,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { Counter, DEFAULT_COUNTER_FILE } from "./counter.js";
-import { copyDescription, removeSidecars } from "./description.js";
+import { copyDescription, findSidecars, removeSidecars } from "./description.js";
 import { detectBlackFrame } from "./blackframe.js";
 import { checkComplete } from "./completeness.js";
+import {
+	DEFAULT_SIDECAR_PREFIX,
+	DEFAULT_SIDECAR_WAIT_MS,
+	earliest,
+	expectsSidecar,
+	sidecarSaysMarker,
+	splitAtBarrier,
+	waitedMs,
+} from "./sidecar-wait.js";
 import { exifDateToIso, formatName, formatStackName, localIsoDate } from "./naming.js";
 
 const run = promisify(execFile);
@@ -21,6 +30,13 @@ export interface ImportOptions {
 	settleMs?: number;
 	/** Don't retry a failed file again until it changes or this long has passed. */
 	retryMs?: number;
+	/**
+	 * Files whose name starts with this (default "CAP-") must have a sidecar .xmp before they are
+	 * imported; "" turns the wait off. See sidecar-wait.ts.
+	 */
+	sidecarPrefix?: string;
+	/** How long to wait for a sidecar before importing without it (default 30 minutes). */
+	sidecarWaitMs?: number;
 	/** Give up on a file whose header says it's incomplete once it has not changed for this long (default 10 min). */
 	incompleteGiveUpMs?: number;
 	/** Log each new / growing / ready file (for watch mode). */
@@ -115,6 +131,10 @@ export class Importer {
 	private gaveUp = new Map<string, { size: number; mtimeMs: number }>();
 	/** Last "incomplete" message logged per file, so a waiting file doesn't log every scan. */
 	private incompleteLogged = new Map<string, string>();
+	/** Files we have said we are waiting for a sidecar for, and those we gave up on (warned once). */
+	private sidecarLogged = new Set<string>();
+	private sidecarGaveUp = new Set<string>();
+	private holdLogged = "";
 	private readonly log: (msg: string) => void;
 	/** A marker frame was seen and the next imported photo starts a new stack. */
 	private stackPending = false;
@@ -140,9 +160,15 @@ export class Importer {
 		for (const k of [...this.failed.keys()]) if (!present.has(k)) this.failed.delete(k);
 		for (const k of [...this.gaveUp.keys()]) if (!present.has(k)) this.gaveUp.delete(k);
 		for (const k of [...this.incompleteLogged.keys()]) if (!present.has(k)) this.incompleteLogged.delete(k);
+		for (const k of [...this.sidecarLogged]) if (!present.has(k)) this.sidecarLogged.delete(k);
+		for (const k of [...this.sidecarGaveUp]) if (!present.has(k)) this.sidecarGaveUp.delete(k);
 		const giveUpMs = opts.incompleteGiveUpMs ?? 10 * 60_000;
+		const sidecarPrefix = opts.sidecarPrefix ?? DEFAULT_SIDECAR_PREFIX;
+		const sidecarWaitMs = opts.sidecarWaitMs ?? DEFAULT_SIDECAR_WAIT_MS;
+		/** Capture times of files still waiting for their sidecar: nothing captured after them is imported yet. */
+		const holdTimes: string[] = [];
 
-		const candidates: Candidate[] = [];
+		let candidates: Candidate[] = [];
 		for (const file of all) {
 			try {
 				const st = await fs.stat(file);
@@ -181,12 +207,41 @@ export class Importer {
 					continue;
 				}
 				this.incompleteLogged.delete(file);
+
+				// Files from the capture app come with a sidecar .xmp written after the ARW. On a slow share the
+				// ARW can appear first, so wait for it (a long time), holding back anything captured after.
+				const expects = expectsSidecar(file, sidecarPrefix);
+				const sidecars = expects ? await findSidecars(file) : [];
+				if (expects && sidecars.length === 0) {
+					const waited = waitedMs(t, cur.since, st.mtimeMs);
+					if (waited < sidecarWaitMs) {
+						holdTimes.push((await readCapture(file)).captured);
+						if (!this.sidecarLogged.has(file)) {
+							this.sidecarLogged.add(file);
+							log(`waiting for sidecar (up to ${Math.round(sidecarWaitMs / 60_000)} min): ${file}`);
+						}
+						result.skipped++;
+						continue;
+					}
+					if (!this.sidecarGaveUp.has(file)) {
+						this.sidecarGaveUp.add(file);
+						const w = `no sidecar for ${path.basename(file)} after ${Math.round(sidecarWaitMs / 60_000)} minutes; importing it without a description.`;
+						log(`WARNING: ${w}`);
+						opts.warn?.(w);
+					}
+				}
+				this.sidecarLogged.delete(file);
+
 				if (opts.verbose) log(`stable, importing: ${file}`);
 				const cand = await readCapture(file);
-				try {
-					cand.blackFrame = await detectBlackFrame(file);
-				} catch (err) {
-					log(`black frame check failed for ${file}, treating as a photo: ${(err as Error).message}`);
+				if (sidecars.length > 0 && (await sidecarSaysMarker(sidecars))) {
+					cand.blackFrame = true; // the sidecar says so: no need to judge the picture
+				} else {
+					try {
+						cand.blackFrame = await detectBlackFrame(file);
+					} catch (err) {
+						log(`black frame check failed for ${file}, treating as a photo: ${(err as Error).message}`);
+					}
 				}
 				candidates.push(cand);
 			} catch (err) {
@@ -197,6 +252,18 @@ export class Importer {
 			}
 		}
 		candidates.sort((a, b) => a.captured.localeCompare(b.captured) || a.file.localeCompare(b.file));
+		const { ready, held } = splitAtBarrier(candidates, earliest(holdTimes));
+		candidates = ready;
+		if (held.length > 0) {
+			result.skipped += held.length;
+			const msg = `holding back ${held.length} file(s) captured after one that is waiting for its sidecar`;
+			if (msg !== this.holdLogged) {
+				this.holdLogged = msg;
+				log(msg);
+			}
+		} else {
+			this.holdLogged = "";
+		}
 		if (candidates.length === 0) {
 			if (!opts.verbose) log("Nothing to import.");
 			return result;
@@ -227,7 +294,10 @@ export class Importer {
 					if (opts.dryRun) {
 						log(`would drop marker frame ${c.file} (${closing ? "closes" : "opens"} a stack)`);
 					} else {
-						if (!opts.keepOriginals) await fs.unlink(c.file);
+						if (!opts.keepOriginals) {
+							await fs.unlink(c.file);
+							await removeSidecars(c.file); // markers from the capture app have one too
+						}
 						log(`marker frame, ${closing ? "closing the stack" : "starting a new stack"}: ${c.file}`);
 					}
 					result.imported++;

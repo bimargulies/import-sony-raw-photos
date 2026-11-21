@@ -34,6 +34,8 @@ program
 	.option("--keep-originals", "don't delete the ARW files after a successful import")
 	.option("--counter-file <file>", "file persisting the last sequence number used", DEFAULT_COUNTER_FILE)
 	.option("--min-age <seconds>", "skip files modified more recently than this", "10")
+	.option("--sidecar-prefix <prefix>", "files named with this prefix wait for a sidecar .xmp before importing ('' = never wait)", "CAP-")
+	.option("--sidecar-wait <minutes>", "how long to wait for a sidecar before importing the photo without one", "30")
 	.option("-w, --watch", "keep running and import new files as they arrive (Ctrl-C to stop)")
 	.option("--interval <seconds>", "watch: how often to scan the source folder", "5")
 	.option("--settle <seconds>", "watch: a file must be unchanged (size and mtime) this long before import", "10")
@@ -55,6 +57,8 @@ program
 				counterFile: opts.counterFile,
 				minAgeMs: Number(opts.minAge) * 1000,
 				settleMs: watching ? Number(opts.settle) * 1000 : 0,
+				sidecarPrefix: opts.sidecarPrefix,
+				sidecarWaitMs: Number(opts.sidecarWait) * 60_000,
 				verbose: watching,
 				log,
 				warn: watching ? popup : undefined,

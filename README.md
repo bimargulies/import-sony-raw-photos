@@ -34,9 +34,25 @@ DNG's IPTC caption, XMP description and EXIF description with exiftool (logged a
 `description for ... from ...`). Photos without a description are left alone. When an ARW is
 imported (and not kept) its sidecar is deleted with it.
 
-**The delivering program must put the sidecar in place before the ARW**: the importer only looks
-for the sidecar when it picks up the ARW. The capture app does this (sidecar first, then the ARW,
-each renamed into place atomically).
+## Waiting for sidecars (slow network shares)
+
+On a NAS a big file can take a long time to write, and the folder the watcher sees can lag behind or
+show files out of order, so an ARW might be seen before its sidecar. So **files whose name starts with
+`CAP-` (the capture app's naming) wait for their sidecar `.xmp` before they are imported**, up to
+30 minutes (`--sidecar-wait <minutes>`; `--sidecar-prefix <prefix>` changes the prefix, `--sidecar-prefix ''`
+turns the wait off). Files with other names (for example straight from an SD card) never wait.
+
+- The capture app writes a sidecar for **every** `CAP-` photo, even with no description, and writes it
+  **after** the ARW, so the sidecar also means "this photo is complete".
+- While a photo waits, **everything captured after it is held back** as well (logged as `holding back N
+  file(s)`), because importing later photos first would put the waiting one in the wrong place, for
+  example outside the focus stack it belongs to. Earlier photos still import.
+- When the wait runs out, the photo is imported without a description and a warning is shown (a popup in
+  watch mode). A sidecar that arrives later is not used.
+- A marker's sidecar carries the keyword `capture-viewfinder:stack-marker` (XMP `dc:subject`); such a file
+  is treated as a stack marker without looking at the picture. Files without a sidecar still use the
+  black-frame check.
+- Sidecars of markers and imported photos are deleted along with them (unless `--keep-originals`).
 
 ## Watch mode
 
