@@ -23,10 +23,20 @@ continues across scans, but not across restarts of the watcher. Thresholds are i
 
 ## Descriptions
 
-`dnglab` drops IPTC, XMP and EXIF description fields when it converts an ARW. If the ARW has a
-description (IPTC `Caption-Abstract`, XMP `dc:description` or EXIF `ImageDescription`, e.g. written by
-a tethering app), the importer copies all three fields onto the DNG with exiftool after converting
-(logged as `copied description to ...`). ARWs without a description are left alone.
+A photo's description comes from a **sidecar `.xmp` file** next to the ARW (`CAP-0001.ARW` with
+`CAP-0001.xmp`, the convention Bridge and Lightroom use; `CAP-0001.ARW.xmp` also works), read from its
+XMP `dc:description`. The ARW itself is never modified, because Sony's raw files can be damaged by
+tools that rewrite them. If there is no sidecar, the ARW's own description fields are used (IPTC
+`Caption-Abstract`, XMP `dc:description` or EXIF `ImageDescription`).
+
+`dnglab` drops all description fields, so after converting, the importer writes the text into the
+DNG's IPTC caption, XMP description and EXIF description with exiftool (logged as
+`description for ... from ...`). Photos without a description are left alone. When an ARW is
+imported (and not kept) its sidecar is deleted with it.
+
+**The delivering program must put the sidecar in place before the ARW**: the importer only looks
+for the sidecar when it picks up the ARW. The capture app does this (sidecar first, then the ARW,
+each renamed into place atomically).
 
 ## Watch mode
 

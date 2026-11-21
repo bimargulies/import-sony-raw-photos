@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { Counter, DEFAULT_COUNTER_FILE } from "./counter.js";
-import { copyDescription } from "./description.js";
+import { copyDescription, removeSidecars } from "./description.js";
 import { detectBlackFrame } from "./blackframe.js";
 import { checkComplete } from "./completeness.js";
 import { exifDateToIso, formatName, formatStackName, localIsoDate } from "./naming.js";
@@ -260,8 +260,9 @@ export class Importer {
 				await run("dnglab", ["convert", c.file, tmp]);
 				const st = await fs.stat(tmp);
 				if (st.size === 0) throw new Error("converter produced an empty file");
-				// dnglab drops the description fields; carry them over from the ARW.
-				if (await copyDescription(c.file, tmp)) log(`copied description to ${name}`);
+				// dnglab drops the description; carry it over from the sidecar .xmp (or the ARW's own fields).
+				const desc = await copyDescription(c.file, tmp);
+				if (desc) log(`description for ${name} from ${path.basename(desc.source)}`);
 				await verifyDng(tmp, c);
 				await fs.mkdir(destDir, { recursive: true });
 				await fs.rename(tmp, target);
@@ -271,7 +272,10 @@ export class Importer {
 					await stackCounter.commit(stackSeq);
 					this.stackPhotos++;
 				}
-				if (!opts.keepOriginals) await fs.unlink(c.file);
+				if (!opts.keepOriginals) {
+					await fs.unlink(c.file);
+					await removeSidecars(c.file);
+				}
 				log(`${c.file} -> ${target}`);
 				result.imported++;
 			} catch (err) {
