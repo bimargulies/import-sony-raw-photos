@@ -28,7 +28,7 @@ continues across scans, but not across restarts of the watcher. Thresholds are i
 Keeps running and imports files as they arrive (Ctrl-C to stop). Each scan logs new, growing and
 ready files with timestamps, so you can see what lands. A file is imported only once its size and
 mtime have been unchanged for `--settle` seconds (default 10) and it is older than `--min-age`;
-`--interval` (default 5) sets the scan period. Before an original is deleted the DNG is checked to
+`--interval` (default 5) sets the scan period. A file whose header says more image data is coming than the file holds (a slow or stalled copy) is skipped as `incomplete` and re-checked each scan; if it doesn't change for 10 minutes the watcher warns and gives up on it. Before an original is deleted the DNG is checked to
 be readable, with the same capture time and dimensions. Failed files are left in place and retried
 only if they change or after 5 minutes. A lock file stops two imports running at once (including the
 Bridge menu command while a watcher is running). `--watch` can't be combined with `--dry-run`.

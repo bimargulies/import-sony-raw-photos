@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { Counter, DEFAULT_COUNTER_FILE } from "./counter.js";
 import { detectBlackFrame } from "./blackframe.js";
+import { checkComplete } from "./completeness.js";
 import { exifDateToIso, formatName, formatStackName, localIsoDate } from "./naming.js";
 
 const run = promisify(execFile);
@@ -19,6 +20,8 @@ export interface ImportOptions {
 	settleMs?: number;
 	/** Don't retry a failed file again until it changes or this long has passed. */
 	retryMs?: number;
+	/** Give up on a file whose header says it's incomplete once it has not changed for this long (default 10 min). */
+	incompleteGiveUpMs?: number;
 	/** Log each new / growing / ready file (for watch mode). */
 	verbose?: boolean;
 	/** File holding the last sequence number used. */
@@ -107,6 +110,10 @@ interface Seen {
 export class Importer {
 	private seen = new Map<string, Seen>();
 	private failed = new Map<string, { size: number; mtimeMs: number; at: number }>();
+	/** Incomplete files we gave up on (and warned about), keyed by path; retried only if the file changes. */
+	private gaveUp = new Map<string, { size: number; mtimeMs: number }>();
+	/** Last "incomplete" message logged per file, so a waiting file doesn't log every scan. */
+	private incompleteLogged = new Map<string, string>();
 	private readonly log: (msg: string) => void;
 	/** A marker frame was seen and the next imported photo starts a new stack. */
 	private stackPending = false;
@@ -130,6 +137,9 @@ export class Importer {
 		const present = new Set(all);
 		for (const k of [...this.seen.keys()]) if (!present.has(k)) this.seen.delete(k);
 		for (const k of [...this.failed.keys()]) if (!present.has(k)) this.failed.delete(k);
+		for (const k of [...this.gaveUp.keys()]) if (!present.has(k)) this.gaveUp.delete(k);
+		for (const k of [...this.incompleteLogged.keys()]) if (!present.has(k)) this.incompleteLogged.delete(k);
+		const giveUpMs = opts.incompleteGiveUpMs ?? 10 * 60_000;
 
 		const candidates: Candidate[] = [];
 		for (const file of all) {
@@ -150,6 +160,26 @@ export class Importer {
 					result.skipped++;
 					continue;
 				}
+				const gu = this.gaveUp.get(file);
+				if (gu && gu.size === st.size && gu.mtimeMs === st.mtimeMs) continue;
+				const comp = await checkComplete(file, st.size);
+				if (!comp.complete) {
+					const msg = `incomplete, waiting: ${file} (${comp.reason})`;
+					if (this.incompleteLogged.get(file) !== msg) {
+						this.incompleteLogged.set(file, msg);
+						log(msg);
+					}
+					if (t - cur.since >= giveUpMs) {
+						const mins = Math.round(giveUpMs / 60_000);
+						const w = `giving up on ${file}: still incomplete (${comp.reason}) after ${mins} minutes without change. It was left in place; re-copy it if it is truncated.`;
+						log(`WARNING: ${w}`);
+						opts.warn?.(w);
+						this.gaveUp.set(file, { size: st.size, mtimeMs: st.mtimeMs });
+					}
+					result.skipped++;
+					continue;
+				}
+				this.incompleteLogged.delete(file);
 				if (opts.verbose) log(`stable, importing: ${file}`);
 				const cand = await readCapture(file);
 				try {
