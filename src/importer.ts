@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { Counter, DEFAULT_COUNTER_FILE } from "./counter.js";
+import { copyDescription } from "./description.js";
 import { detectBlackFrame } from "./blackframe.js";
 import { checkComplete } from "./completeness.js";
 import { exifDateToIso, formatName, formatStackName, localIsoDate } from "./naming.js";
@@ -259,6 +260,8 @@ export class Importer {
 				await run("dnglab", ["convert", c.file, tmp]);
 				const st = await fs.stat(tmp);
 				if (st.size === 0) throw new Error("converter produced an empty file");
+				// dnglab drops the description fields; carry them over from the ARW.
+				if (await copyDescription(c.file, tmp)) log(`copied description to ${name}`);
 				await verifyDng(tmp, c);
 				await fs.mkdir(destDir, { recursive: true });
 				await fs.rename(tmp, target);

@@ -21,6 +21,13 @@ into `<dest>/<date>/stack-NNN/`, where `NNN` comes from a persistent counter (`s
 the DNG counter). Photos outside a pair go in the day folder as usual. In watch mode an open stack
 continues across scans, but not across restarts of the watcher. Thresholds are in `src/blackframe.ts`.
 
+## Descriptions
+
+`dnglab` drops IPTC, XMP and EXIF description fields when it converts an ARW. If the ARW has a
+description (IPTC `Caption-Abstract`, XMP `dc:description` or EXIF `ImageDescription`, e.g. written by
+a tethering app), the importer copies all three fields onto the DNG with exiftool after converting
+(logged as `copied description to ...`). ARWs without a description are left alone.
+
 ## Watch mode
 
     pnpm start -- --watch
