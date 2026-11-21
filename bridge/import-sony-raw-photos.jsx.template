@@ -26,8 +26,12 @@
 		return DEST + "/" + d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 	}
 
+	// Logs live in ~/Library/Logs (readable by tools), not the TemporaryItems temp folder.
+	var LOG_DIR = new Folder(Folder("~").fsName + "/Library/Logs/import-sony-raw-photos");
+	LOG_DIR.create();
+
 	function runImport() {
-		var log = new File(Folder.temp + "/import-sony-raw-photos.log");
+		var log = new File(LOG_DIR.fsName + "/import.log");
 		var cmd = "export PATH=" + q(PATH) + "; " + q(NODE) + " " + q(CLI) + " > " + q(log.fsName) + " 2>&1";
 		var output = "";
 		try {
@@ -84,7 +88,7 @@
 		return cmd.indexOf(CLI) !== -1 && cmd.indexOf("--watch") !== -1 ? pid : 0;
 	}
 
-	var watchLog = new File(Folder.temp + "/import-sony-raw-photos-watch.log");
+	var watchLog = new File(LOG_DIR.fsName + "/watch.log");
 
 	// Version of the installed importer, as reported by the CLI itself.
 	function version() {
