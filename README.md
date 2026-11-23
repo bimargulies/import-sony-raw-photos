@@ -52,8 +52,9 @@ turns the wait off). Files with other names (for example straight from an SD car
   example outside the focus stack it belongs to. Earlier photos still import.
 - When the wait runs out, the photo is imported without a description and a warning is shown (a popup in
   watch mode). A sidecar that arrives later is not used.
-- A marker's sidecar carries the keyword `capture-viewfinder:stack-marker` (XMP `dc:subject`); such a file
-  is treated as a stack marker without looking at the picture. Files without a sidecar still use the
+- A marker's sidecar carries the keyword `macro-capture-for-sony:stack-marker` (XMP `dc:subject`); such a
+  file is treated as a stack marker without looking at the picture. The older keyword
+  `capture-viewfinder:stack-marker` is still recognized. Files without a sidecar still use the
   black-frame check.
 - Sidecars of markers and imported photos are deleted along with them (unless `--keep-originals`).
 

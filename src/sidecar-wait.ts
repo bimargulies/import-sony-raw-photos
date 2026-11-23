@@ -14,7 +14,10 @@ export const DEFAULT_SIDECAR_PREFIX = "CAP-";
 export const DEFAULT_SIDECAR_WAIT_MS = 30 * 60_000;
 
 /** The keyword in a marker's sidecar (XMP dc:subject) that says "this file is a stack marker". */
-export const MARKER_KEYWORD = "capture-viewfinder:stack-marker";
+export const MARKER_KEYWORD = "macro-capture-for-sony:stack-marker";
+
+/** The keyword written before the capture app was renamed. Markers already on disk may still carry it. */
+export const LEGACY_MARKER_KEYWORD = "capture-viewfinder:stack-marker";
 
 /** True if the file name starts with the prefix (case-insensitive). An empty prefix turns the wait off. */
 export function expectsSidecar(file: string, prefix: string): boolean {
@@ -46,11 +49,11 @@ export function splitAtBarrier<T extends { captured: string }>(sorted: T[], barr
 	return { ready: sorted.filter((c) => c.captured < barrier), held: sorted.filter((c) => c.captured >= barrier) };
 }
 
-/** True if an exiftool JSON row (from `-XMP-dc:Subject`) carries the marker keyword. */
+/** True if an exiftool JSON row (from `-XMP-dc:Subject`) carries the current or legacy marker keyword. */
 export function rowSaysMarker(row: Record<string, unknown>): boolean {
 	const s = row.Subject;
 	const list = Array.isArray(s) ? s : typeof s === "string" ? [s] : [];
-	return list.some((v) => typeof v === "string" && v.trim() === MARKER_KEYWORD);
+	return list.some((v) => typeof v === "string" && (v.trim() === MARKER_KEYWORD || v.trim() === LEGACY_MARKER_KEYWORD));
 }
 
 /** Does any of these sidecars say the file is a stack marker? */

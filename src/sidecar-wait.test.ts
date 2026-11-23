@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { earliest, expectsSidecar, rowSaysMarker, splitAtBarrier, waitedMs, MARKER_KEYWORD } from "./sidecar-wait.js";
+import { earliest, expectsSidecar, rowSaysMarker, splitAtBarrier, waitedMs, LEGACY_MARKER_KEYWORD, MARKER_KEYWORD } from "./sidecar-wait.js";
 
 describe("expectsSidecar", () => {
 	it("matches the prefix on the file name, ignoring case and folders", () => {
@@ -40,6 +40,10 @@ describe("rowSaysMarker", () => {
 	it("recognizes the keyword as a string or in a list", () => {
 		expect(rowSaysMarker({ Subject: MARKER_KEYWORD })).toBe(true);
 		expect(rowSaysMarker({ Subject: ["x", MARKER_KEYWORD] })).toBe(true);
+	});
+	it("still recognizes markers written before the capture app was renamed", () => {
+		expect(rowSaysMarker({ Subject: "capture-viewfinder:stack-marker" })).toBe(true);
+		expect(rowSaysMarker({ Subject: ["x", LEGACY_MARKER_KEYWORD] })).toBe(true);
 	});
 	it("is false otherwise", () => {
 		expect(rowSaysMarker({})).toBe(false);
