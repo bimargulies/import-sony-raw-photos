@@ -19,7 +19,10 @@ come in open/close pairs. The first marker opens a stack,
 the next closes it. Markers are deleted without a DNG; the photos between them, in capture order, go
 into `<dest>/<date>/stack-NNN/`, where `NNN` comes from a persistent counter (`stack-counter`, beside
 the DNG counter). Photos outside a pair go in the day folder as usual. In watch mode an open stack
-continues across scans, but not across restarts of the watcher. Thresholds are in `src/blackframe.ts`.
+continues across scans, but not across restarts of the watcher. If a stack is still open when a frame
+arrives on a later day, at least an hour after the stack's last frame, the watcher closes it and shows a
+warning, so the next marker opens a stack instead of closing the forgotten one. Thresholds are in
+`src/blackframe.ts`.
 
 ## Descriptions
 
@@ -65,6 +68,21 @@ mtime have been unchanged for `--settle` seconds (default 10) and it is older th
 be readable, with the same capture time and dimensions. Failed files are left in place and retried
 only if they change or after 5 minutes. A lock file stops two imports running at once (including the
 Bridge menu command while a watcher is running). `--watch` can't be combined with `--dry-run`.
+
+If an original can't be deleted after its DNG is in place (a NAS can report `EBUSY`), only the delete
+is retried, so the photo isn't imported twice and a marker isn't counted twice. The watcher warns if
+the delete is still failing after 10 minutes. This retry list is kept in memory, so a file still
+waiting when the watcher restarts is imported again.
+
+### Controlling the background watcher
+
+    node dist/index.js --watch-status    # running? version? is a stack open?
+    node dist/index.js --watch-start
+    node dist/index.js --watch-stop      # finishes the current import first
+    node dist/index.js --watch-restart
+
+These use the same lock and log as the Bridge menu, so either can stop a watcher started by the other.
+They run the watcher with default settings. `--watch-start` appends to `watch.log`.
 
 ## Adobe Bridge menu command
 

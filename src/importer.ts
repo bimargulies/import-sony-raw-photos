@@ -3,9 +3,12 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { Counter, DEFAULT_COUNTER_FILE } from "./counter.js";
-import { copyDescription, findSidecars, removeSidecars } from "./description.js";
+import { copyDescription, findSidecars } from "./description.js";
 import { detectBlackFrame } from "./blackframe.js";
 import { checkComplete } from "./completeness.js";
+import { PendingRemovals } from "./removal.js";
+import { stackAbandoned } from "./stack.js";
+import type { StackStatus } from "./watch-control.js";
 import {
 	DEFAULT_SIDECAR_PREFIX,
 	DEFAULT_SIDECAR_WAIT_MS,
@@ -48,6 +51,8 @@ export interface ImportOptions {
 	log?: (msg: string) => void;
 	/** Called for conditions the user should see (e.g. an empty stack); watch mode shows a popup. */
 	warn?: (msg: string) => void;
+	/** Called after each scan that handled files, so watch mode can publish whether a stack is open. */
+	onStackState?: (state: StackStatus) => void;
 }
 
 export interface ImportResult {
@@ -142,9 +147,33 @@ export class Importer {
 	private stackDir: string | undefined;
 	/** Photos imported into the current stack so far. */
 	private stackPhotos = 0;
+	/** Capture time of the open stack's latest frame, to notice a stack left open overnight. */
+	private stackLastCapture: string | undefined;
+	/** Imported originals whose delete failed; these are retried as deletes, never imported again. */
+	private readonly removals: PendingRemovals;
 
 	constructor(private readonly opts: ImportOptions) {
 		this.log = opts.log ?? console.log;
+		this.removals = new PendingRemovals(this.log, opts.warn, opts.incompleteGiveUpMs ?? 10 * 60_000);
+	}
+
+	stackState(): StackStatus {
+		if (this.stackDir) return { stack: path.basename(this.stackDir), photos: this.stackPhotos };
+		return { stack: this.stackPending ? "pending" : "none", photos: 0 };
+	}
+
+	/** Drop an open stack from an earlier day so the next marker opens a stack instead of closing it. */
+	private abandonStaleStack(c: Candidate): void {
+		const open = this.stackPending || this.stackDir !== undefined;
+		if (!open || !this.stackLastCapture || !stackAbandoned(this.stackLastCapture, c.captured)) return;
+		const name = this.stackDir ? path.basename(this.stackDir) : "A stack with no photos";
+		const msg = `${name} was left open from ${this.stackLastCapture.slice(0, 16)} and has been closed. ${path.basename(c.file)} is being treated as outside it.`;
+		this.log(`WARNING: ${msg}`);
+		this.opts.warn?.(msg);
+		this.stackPending = false;
+		this.stackDir = undefined;
+		this.stackPhotos = 0;
+		this.stackLastCapture = undefined;
 	}
 
 	async scan(now: Date = new Date()): Promise<ImportResult> {
@@ -154,6 +183,7 @@ export class Importer {
 		const settleMs = opts.settleMs ?? 0;
 		const retryMs = opts.retryMs ?? 5 * 60_000;
 
+		await this.removals.retry(t);
 		const all = await findArws(opts.source);
 		const present = new Set(all);
 		for (const k of [...this.seen.keys()]) if (!present.has(k)) this.seen.delete(k);
@@ -170,6 +200,7 @@ export class Importer {
 
 		let candidates: Candidate[] = [];
 		for (const file of all) {
+			if (this.removals.has(file)) continue; // already imported; only its delete is outstanding
 			try {
 				const st = await fs.stat(file);
 				const prev = this.seen.get(file);
@@ -279,6 +310,7 @@ export class Importer {
 		const partialDir = path.join(folder, `.partial-${process.pid}`);
 
 		for (const c of candidates) {
+			this.abandonStaleStack(c);
 			if (c.blackFrame) {
 				// Markers come in open/close pairs: the first opens a stack, the next closes it.
 				const closing = this.stackPending || this.stackDir !== undefined;
@@ -290,22 +322,15 @@ export class Importer {
 				this.stackPending = !closing;
 				this.stackDir = undefined;
 				this.stackPhotos = 0;
-				try {
-					if (opts.dryRun) {
-						log(`would drop marker frame ${c.file} (${closing ? "closes" : "opens"} a stack)`);
-					} else {
-						if (!opts.keepOriginals) {
-							await fs.unlink(c.file);
-							await removeSidecars(c.file); // markers from the capture app have one too
-						}
-						log(`marker frame, ${closing ? "closing the stack" : "starting a new stack"}: ${c.file}`);
-					}
-					result.imported++;
-				} catch (err) {
-					log(`FAILED ${c.file}: ${(err as Error).message}`);
-					await this.remember(c.file);
-					result.failed++;
+				this.stackLastCapture = closing ? undefined : c.captured;
+				if (opts.dryRun) {
+					log(`would drop marker frame ${c.file} (${closing ? "closes" : "opens"} a stack)`);
+				} else {
+					// The marker has now counted, so a failed delete must not let it be counted again.
+					if (!opts.keepOriginals) await this.removals.removeOrRemember(c.file, t);
+					log(`marker frame, ${closing ? "closing the stack" : "starting a new stack"}: ${c.file}`);
 				}
+				result.imported++;
 				continue;
 			}
 			let destDir = folder;
@@ -341,11 +366,10 @@ export class Importer {
 				if (destDir !== folder) {
 					await stackCounter.commit(stackSeq);
 					this.stackPhotos++;
+					this.stackLastCapture = c.captured;
 				}
-				if (!opts.keepOriginals) {
-					await fs.unlink(c.file);
-					await removeSidecars(c.file);
-				}
+				// The DNG is in place, so from here a failure must not import this file again.
+				if (!opts.keepOriginals) await this.removals.removeOrRemember(c.file, t);
 				log(`${c.file} -> ${target}`);
 				result.imported++;
 			} catch (err) {
@@ -356,6 +380,7 @@ export class Importer {
 			}
 		}
 		await fs.rm(partialDir, { recursive: true, force: true });
+		opts.onStackState?.(this.stackState());
 		return result;
 	}
 
